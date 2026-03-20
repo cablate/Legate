@@ -1,0 +1,6 @@
+{
+  "name": "github-issues",
+  "description": "GitHub Issues channel for Claude Code — polls issues with a configurable label and pushes them into your session.",
+  "version": "0.0.1",
+  "keywords": ["github", "issues", "channel", "mcp", "legate"]
+}
