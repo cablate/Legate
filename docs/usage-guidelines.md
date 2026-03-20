@@ -31,7 +31,7 @@
 | 類型 | 原因 |
 |------|------|
 | 整個專案從零開始 | 範圍太大，AI 需要明確的 codebase 才能工作 |
-| 需要存取本機檔案 | Legate 在 Docker sandbox 裡，無法碰你的電腦 |
+| 需要存取本機檔案 | 任務在 Claude Code session 中執行，隔離程度與一般使用相同 |
 | 需要資料庫 migration | 涉及生產資料，風險太高 |
 | 需要 secret/credential | 不要把 API Key 放在 Issue 裡 |
 | 涉及安全敏感邏輯 | 認證、加密、權限控制等建議人工處理 |
@@ -115,7 +115,7 @@
 
 ### 品質提升技巧
 
-1. **寫好 CLAUDE.md** — 這是最大的品質槓桿。見 [legate-spec.md](legate-spec.md)
+1. **寫好 CLAUDE.md** — 這是最大的品質槓桿。說明專案架構、coding style、常用指令、測試方式
 2. **Issue 寫清楚** — 給出具體檔案路徑、預期行為、邊界條件
 3. **任務拆小** — 一個 Issue 做一件事，不要塞太多
 4. **善用 PR review** — 第一次 PR 不完美？留 comment，AI 會迭代
@@ -132,7 +132,6 @@
 | 是否 merge PR | 委託者自行決定 |
 | merge 後的後果 | 委託者 |
 | AI 額度消耗 | 代勞者自行承擔 |
-| Docker 環境安全 | 代勞者 |
 
 **重要**：Legate 產出的 PR 等同於「一個新手工程師的初稿」。你不會不 review 就 merge 新手的 code，對 AI 的 PR 也一樣。
 
@@ -143,7 +142,6 @@
 ### 委託者的程式碼
 
 - 你的 repo 是 GitHub 上的公開或私有 repo——Legate 不改變你的存取設定
-- AI 在 Docker sandbox 中處理你的程式碼，任務完成後 workspace 立即銷毀
 - 代勞者透過 Fork 存取你的 repo，Fork 的可見性跟原 repo 相同
 - **不要在 Issue 中放 secret、API Key、密碼等敏感資訊**
 
@@ -155,10 +153,8 @@
 
 ### AI 的限制
 
-- AI 在 Docker 容器內執行，無法存取 host 機器
-- 網路限制只允許 GitHub 和套件註冊表
-- 容器有時間限制（預設 10 分鐘）和資源限制（CPU/RAM）
-- PR 由容器外的 orchestrator 提交，防止 AI 被 prompt injection 操控
+- 任務在 Claude Code session 中執行，隔離程度與一般 Claude Code 使用相同
+- 任務有時間限制（預設 10 分鐘），過長的任務請拆小再委託
 
 ---
 

@@ -48,7 +48,7 @@ Requester: Receives PR, reviews, merges if satisfied
 
 1. **Requester** describes the task on a supported platform
 2. **Operator's** Claude Code automatically receives it via Channel
-3. AI reads your repo, understands your project conventions (via `.legate/CLAUDE.md`), and processes the task
+3. AI reads your repo, understands your project conventions (via `CLAUDE.md`), and processes the task
 4. Delivers a Pull Request — requester reviews and decides whether to merge
 
 ---
@@ -74,27 +74,15 @@ Want to build a Channel for another platform? Just add ~10 lines of Channel capa
 
 ### For Requesters
 
-1. Create `.legate/` in your repo root:
+1. Prepare your repo with a good `CLAUDE.md` — Claude Code's standard project instructions file. Describe your project conventions, architecture, and coding style. The better the `CLAUDE.md`, the better the results.
 
-```
-.legate/
-├── config.yaml     # Basic settings
-└── CLAUDE.md       # Tell the AI your project conventions
-```
+2. Open a GitHub Issue with the `legate` label. Describe your task clearly: what needs to be done, what the expected outcome is, and any relevant context.
 
-2. `config.yaml`:
-
-```yaml
-version: 1
-base_branch: main
-label: legate
-```
-
-3. Submit a task via a supported Channel (currently: open a GitHub Issue with the `legate` label)
-
-4. Receive a PR, review it, leave comments to request changes, merge when satisfied
+3. Receive a PR, review it, leave comments to request changes, merge when satisfied.
 
 ### For Operators
+
+The reference implementation uses the `--dangerously-load-development-channels` flag, which is currently required for Channels support:
 
 ```bash
 # Launch from the Legate project directory
@@ -115,7 +103,7 @@ See [Operator Guide](docs/operator-guide.md) for setup details.
 ## Key Features
 
 ### 🧠 Skill-Driven
-Requesters put `CLAUDE.md` and skills in their repo. The AI reads them and understands your project conventions, architecture, and coding style. The better the CLAUDE.md, the better the results.
+Requesters put `CLAUDE.md` in their repo. The AI reads it and understands your project conventions, architecture, and coding style. The better the CLAUDE.md, the better the results.
 
 ### 🔄 Fork Model
 Legate works on its own fork — never touches your repo directly. You review the PR and decide whether to merge.
@@ -173,7 +161,6 @@ Leave review comments — the AI will iterate. If it's fundamentally wrong, clos
 
 | Document | Description |
 |----------|-------------|
-| [`.legate/` Spec](docs/legate-spec.md) | `.legate/` directory spec + CLAUDE.md writing guide |
 | [Usage Guidelines](docs/usage-guidelines.md) | Task suitability, quality expectations, responsibility |
 | [Operator Guide](docs/operator-guide.md) | Operator setup and operations manual |
 | [Channel Plugin Guide](docs/channel-plugin-guide.md) | Convert existing MCP Server into a Channel |
