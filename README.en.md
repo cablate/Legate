@@ -22,7 +22,7 @@
 
 ## What is Legate?
 
-Legate is a community tool that lets people with unused AI subscription quota help others with coding tasks — through GitHub or Telegram.
+Legate is a community tool that lets people with unused AI subscription quota help others with coding tasks.
 
 **No fees. No API keys shared. Just help.**
 
@@ -43,14 +43,14 @@ Legate:
 
 Many AI subscriptions come with quotas that go unused. You can't share your API key (violates ToS), but you **can** use your own tools to help someone else — just like a designer with Photoshop doing work for a friend.
 
-Legate automates this: the operator's Claude Code receives tasks through a [Channel plugin](https://code.claude.com/docs/en/channels), forks your repo, processes it in a sandboxed Docker container, and delivers a Pull Request.
+Legate automates this: the operator's Claude Code receives tasks through a [Channel plugin](https://code.claude.com/docs/en/channels), forks your repo, processes it in a sandboxed Docker environment, and delivers a Pull Request.
 
 ---
 
 ## Features
 
 ### 📱 Telegram + GitHub Dual Intake
-Send a Telegram message or open a GitHub Issue — both work. Don't know GitHub? No problem, just send a message.
+Send a task via Telegram or open a GitHub Issue. Don't know GitHub? No problem — just send a message.
 
 ### 🐳 Docker Isolated
 Every task runs in its own Docker container. Your code is never stored — workspace is destroyed after each task.
@@ -62,7 +62,7 @@ Put your CLAUDE.md and skills in the repo. The AI reads them and understands you
 Legate works on its own fork, never touches your repo directly. You review the PR and decide whether to merge.
 
 ### 🔌 Built on Claude Code Channels
-Legate is a [Claude Code Channel plugin](https://code.claude.com/docs/en/channels). Operators go live with a single command — no custom server needed.
+Legate is a [Claude Code Channel plugin](https://code.claude.com/docs/en/channels). Operators start with a single command — no need to self-host a server.
 
 ### 💰 Free
 No fees. The operator volunteers their unused AI quota to help.
@@ -78,12 +78,12 @@ No fees. The operator volunteers their unused AI quota to help.
 │  Telegram ───┼────▶│  Legate Channel Plugin   │────▶│  (Work here) │
 │  GitHub Issue┼────▶│  (MCP Server)            │◀────│              │
 │              │◀────│  + Docker                │     │              │
-│  (Gets PR)   │     │                          │     │              │
+│  (Get PR)    │     │                          │     │              │
 └──────────────┘     └──────────────────────────┘     └──────────────┘
 ```
 
 1. **Prepare** — Add `.legate/` to your repo with `config.yaml` + `CLAUDE.md`
-2. **Request** — Send a Telegram message, or open a GitHub Issue with the `legate` label
+2. **Request** — Send a message via Telegram, or open a GitHub Issue with the `legate` label
 3. **Wait** — AI receives the task, forks, and works in Docker
 4. **Review** — Get a PR, review the diff, leave comments for iteration
 5. **Merge** — Happy? Merge the PR. Done.
@@ -94,13 +94,13 @@ No fees. The operator volunteers their unused AI quota to help.
 
 ### Option 1: Telegram (recommended for beginners)
 
-1. Add Legate bot as a friend
+1. Add the Legate bot as a friend
 2. Send your task:
    ```
    repo: https://github.com/you/project
    task: Fix the login validation bug
    ```
-3. Wait for the PR link. Simple questions get a direct reply.
+3. Wait for a PR link. Simple questions get a direct reply.
 
 ### Option 2: GitHub Issue
 
@@ -121,7 +121,7 @@ label: legate
 
 3. `CLAUDE.md` — Tell the AI about your project (coding style, architecture, conventions). The more context, the better the results.
 
-4. Open a GitHub Issue with the `legate` label and describe what you need.
+4. Open a GitHub Issue with the `legate` label and clearly describe your needs.
 
 ### Reviewing Results
 
@@ -136,7 +136,7 @@ label: legate
 
 ### Requirements
 
-- Claude Max subscription (Channels require claude.ai login)
+- Claude Max subscription (Channels requires claude.ai login)
 - [Claude Code](https://code.claude.com) v2.1.80+
 - [Bun](https://bun.sh) runtime
 - Docker
@@ -145,20 +145,19 @@ label: legate
 ### Getting Started
 
 ```bash
-# Install the Legate Channel plugin
-# (run inside Claude Code)
+# Install Legate Channel plugin (in Claude Code)
 /plugin install legate@claude-plugins-official
 
-# Configure your Telegram bot token
-/legate:configure <your-bot-token>
+# Configure GitHub token
+/github-issues:configure <your-pat>
 
-# Launch with channels flag
-claude --channels plugin:legate@claude-plugins-official
+# Launch with channels enabled
+claude --channels plugin:legate
 ```
 
-That's it. Your Claude Code now accepts task requests from Telegram and GitHub.
+That's it. Your Claude Code now automatically receives task requests from tracked repos.
 
-### Adding Repos to Track
+### Tracking Repos
 
 Edit `legate-config.yaml`:
 
@@ -174,7 +173,7 @@ The heartbeat automatically detects new issues with the `legate` label.
 
 ## Security
 
-- **Channel security** — Sender allowlist + pairing, only approved users can send tasks
+- **Channel security** — Sender allowlist + pairing, only approved people can send tasks
 - **Docker isolation** — Each task runs in its own container (cap-drop ALL, non-root, seccomp)
 - **No code retention** — Workspace destroyed after each task
 - **Fork model** — Operator never has write access to your repo
@@ -200,10 +199,10 @@ The heartbeat automatically detects new issues with the `legate` label.
 - **Local tasks** — Can't access your local files, GUI, or desktop. Everything runs in Docker.
 - **Large rewrites** — 10-minute timeout per task. Break big tasks into smaller Issues.
 - **Database migrations** — Too risky for automated execution.
-- **Secrets handling** — Never put API keys or passwords in Issues or Telegram messages.
+- **Secrets handling** — Never put API keys or passwords in Issues or Telegram.
 - **Cross-system integration** — Complex multi-service orchestration is unreliable.
 - **Remember past tasks** — Each task is independent. No context from previous tasks.
-- **Channels limitation** — Currently requires claude.ai login (no API key support), Research Preview stage.
+- **Channels limitation** — Currently requires claude.ai login (no API key support), Research Preview.
 
 ---
 
@@ -219,19 +218,19 @@ Your code runs in an isolated Docker container that is destroyed after each task
 
 ### How good is the AI?
 
-Think of it as a junior developer's first draft. It can handle bug fixes, small features, refactoring, and code cleanup well. Complex business logic or architectural decisions need human judgment. **Always review the PR before merging.**
+Think of it as a junior developer's first draft. Bug fixes, small features, refactoring, and code cleanup work well. Complex business logic or architectural decisions need human judgment. **Always review the PR before merging.**
 
 ### How is this different from OpenClaw?
 
-Both OpenClaw and Claude Code Channels are "use your own quota to control your own AI." Legate is the only one doing "quota sharing" — people with quota help those without.
+OpenClaw and Claude Code Channels are both "use your own quota to control your own AI." Legate is the only one doing "quota sharing" — people with quota help those without.
 
-### Can I be an operator?
+### Can I become an operator?
 
-Yes! If you have a Claude Max subscription and Docker, you're one command away. See [For Operators](#for-operators).
+Yes! As long as you have a Claude Max subscription and Docker, you can start with a single command. See [For Operators](#for-operators).
 
 ### What if the PR is wrong?
 
-Leave review comments on the PR — the AI will read them and iterate. If it's fundamentally wrong, close the PR, improve your Issue description and CLAUDE.md, and try again.
+Leave review comments on the PR — the AI will iterate. If it's fundamentally wrong, close the PR, improve your Issue description and CLAUDE.md, and try again.
 
 ---
 

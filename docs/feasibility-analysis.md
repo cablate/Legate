@@ -3,6 +3,8 @@
 > **日期**：2026-03-18
 > **版本**：v1.0
 > **產出方式**：4 路平行研究（ToS、競品、架構、Docker）整合
+>
+> **⚠️ 2026-03-21 註**：本報告撰寫於 Claude Code Channels 發布之前。架構適配性（第 3 節）和 Docker 方案（第 4 節）的部分內容已被 Channels 架構取代。Legate 現在以 Channel plugin 形式運作，不再需要自建 Node.js orchestrator。ToS 分析（第 1 節）和市場定位（第 2 節）仍然有效。詳見 [roadmap.md](roadmap.md) 的「架構轉型」章節。
 
 ---
 

@@ -1,6 +1,6 @@
-# Operator 指南
+# 代勞者指南
 
-> 給代勞者（Legate operator）的完整設定與操作手冊。
+> 給代勞者（Legate operator）的設定與操作手冊。
 
 ---
 
@@ -8,328 +8,177 @@
 
 | 項目 | 說明 |
 |------|------|
-| **機器** | VPS 或本地電腦，需安裝 Docker |
-| **Claude 額度** | API Key（Commercial Terms）或 Max 訂閱 |
+| **Claude Max 訂閱** | Channels 需要 claude.ai 登入（不支援 API key） |
+| **Claude Code** | v2.1.80+（支援 Channels） |
+| **Bun** | Channel plugin runtime（[安裝](https://bun.sh)） |
 | **GitHub 帳號** | 需要 Personal Access Token（PAT） |
-| **Node.js** | 20+ |
-
-### 硬體建議
-
-| 規格 | 最低 | 建議 |
-|------|------|------|
-| CPU | 2 vCPU | 4 vCPU |
-| RAM | 4 GB | 8 GB |
-| Disk | 40 GB SSD | 80 GB SSD |
-| 並發任務 | 1-2 | 2-4 |
-
-Claude Code 在容器內執行時吃記憶體，每個容器分配 2-4 GB RAM。
+| **Docker**（Phase 2） | 任務隔離用，Phase 1 可先不裝 |
 
 ---
 
-## 環境設定
+## 快速開始
 
-### 1. 安裝 Docker
+### 1. 安裝 Legate Channel Plugin
 
-```bash
-# Ubuntu
-curl -fsSL https://get.docker.com | sh
-sudo usermod -aG docker $USER
-# 登出再登入
+在 Claude Code 內：
 
-# 驗證
-docker run hello-world
+```
+/plugin install legate@claude-plugins-official
 ```
 
-### 2. 安裝 Node.js
+> 如果 plugin 找不到，先加 marketplace：
+> `/plugin marketplace add anthropics/claude-plugins-official`
 
-```bash
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
-nvm install 20
+### 2. 設定 GitHub Token
+
+```
+/github-issues:configure <your-github-pat>
 ```
 
-### 3. GitHub Personal Access Token
+PAT 需要的權限：
+- Issues：Read and write
+- Pull requests：Read and write
+- Contents：Read
+- Metadata：Read
 
-到 [github.com/settings/tokens](https://github.com/settings/tokens) 建立 PAT：
+Token 存放在 `~/.claude/channels/github-issues/.env`。
 
-需要的 scope：
-- `repo` — 完整 repo 存取（fork, clone, push）
-- `workflow` — 如果需要觸發 GitHub Actions
+### 3. 追蹤 Repo
 
-> **安全提醒**：PAT 等同於你的 GitHub 帳號存取權限。不要洩漏，定期輪換。
-
-### 4. Claude 認證
-
-**方案 A：API Key（建議）**
-
-到 [console.anthropic.com](https://console.anthropic.com) 取得 API Key。
-
-```bash
-export ANTHROPIC_API_KEY=sk-ant-xxxxx
+```
+/github-issues:access add owner/repo
 ```
 
-**方案 B：Max 訂閱**
+或手動編輯 `~/.claude/channels/github-issues/access.json`：
 
-```bash
-# 在有瀏覽器的環境登入
-claude auth login
-
-# 如果是 headless VPS，先在本機登入，再複製 auth 檔案到 VPS
-scp -r ~/.claude user@vps:~/
+```json
+{
+  "trackedRepos": [
+    { "owner": "friend-name", "repo": "their-project", "label": "legate" }
+  ],
+  "pollIntervalMs": 60000
+}
 ```
 
-> **注意**：Max 訂閱用於個人互助是合規的，但不適合大規模商業化。詳見 [feasibility-analysis.md](feasibility-analysis.md)。
+### 4. 啟動
+
+```bash
+claude --channels plugin:legate
+```
+
+就這樣。你的 Claude Code 現在會自動：
+- 掃描追蹤 repo 的 GitHub Issues（帶 `legate` label）
+- 接收任務，處理，在 Issue 留 comment 回報
 
 ---
 
-## 設定 Legate
-
-### 核心設定檔
-
-```yaml
-# legate-config.yaml
-
-# Operator 資訊
-operator:
-  github_user: your-github-username
-
-# 追蹤的 Repo 列表
-tracked_repos:
-  - owner: friend-a
-    repo: web-app
-    # 可選覆蓋設定
-    max_concurrent: 1
-    timeout: 10m
-
-  - owner: friend-b
-    repo: api-server
-
-# Heartbeat 設定
-heartbeat:
-  interval: 5m           # 掃描間隔
-  max_concurrent: 2      # 全域最大並發任務數
-
-# Docker 設定
-docker:
-  image: legate-worker    # Docker image 名稱
-  memory: 4g              # 每個容器的記憶體上限
-  cpus: 2                 # 每個容器的 CPU 上限
-  timeout: 10m            # 任務超時
-  network: legate-net     # Docker network 名稱
-
-# 通知（可選）
-notification:
-  # 任務完成/失敗時通知你
-  telegram_bot_token: ""  # 留空 = 不通知
-  telegram_chat_id: ""
-```
-
-### 環境變數
+## 開發模式（尚未發布到 marketplace 時）
 
 ```bash
-# .env
-ANTHROPIC_API_KEY=sk-ant-xxxxx
-GITHUB_TOKEN=ghp_xxxxx
+cd /path/to/Legate
+claude --dangerously-load-development-channels server:github-issues
 ```
+
+這會讀取專案根目錄的 `.mcp.json`，直接從原始碼啟動 plugin。
 
 ---
 
 ## 追蹤新 Repo
 
-當有人請你幫忙：
+有人請你幫忙時：
 
-### 1. Fork 對方的 Repo
-
-```bash
-gh repo fork owner/repo --clone=false
-```
-
-或在 GitHub 網頁上按 Fork。
-
-### 2. 加入追蹤列表
-
-```yaml
-# legate-config.yaml
-tracked_repos:
-  - owner: new-friend
-    repo: their-project
-```
-
-### 3. 驗證 `.legate/` 設定
-
-檢查對方的 repo 是否有 `.legate/` 目錄：
-- `config.yaml` 存在且格式正確
-- `CLAUDE.md` 存在且有足夠資訊
-
-如果沒有，請對方先按照 [legate-spec.md](legate-spec.md) 設定。
-
-### 4. 重啟 Legate（或等下一次 heartbeat）
-
-Heartbeat 會自動偵測新 repo 的 Issue。
+1. **確認對方的 repo 有 `.legate/`** — 至少要有 `config.yaml` + `CLAUDE.md`。沒有的話請對方先按 [legate-spec.md](legate-spec.md) 設定。
+2. **加入追蹤列表** — `/github-issues:access add owner/repo`
+3. **對方開 Issue** — 加上 `legate` label，下一次 polling 就會偵測到。
 
 ---
 
 ## 日常操作
 
-### 啟動
-
-```bash
-npm run start
-# 或用 PM2
-pm2 start npm --name legate -- run start
-```
-
 ### 查看狀態
 
-```bash
-# 查看正在執行的任務
-docker ps --filter name=legate
+- **Polling log**：`~/.claude/channels/github-issues/debug.log`
+- **State**：`~/.claude/channels/github-issues/state.json`（已處理的 Issue/Comment 記錄）
 
-# 查看最近的任務 log
-docker logs legate-task-xxx
+### 手動重置
 
-# 查看 orchestrator log
-pm2 logs legate
-```
-
-### 手動觸發任務
-
-如果不想等 heartbeat，可以手動觸發：
+如果 state 出問題（重複推送、漏掉事件），可以刪掉 state 重來：
 
 ```bash
-npm run task -- --repo owner/repo --issue 42
+rm ~/.claude/channels/github-issues/state.json
 ```
 
-### 停止
-
-```bash
-# 停止接受新任務，等當前任務完成
-npm run stop --graceful
-
-# 強制停止（會 kill 正在執行的容器）
-npm run stop --force
-```
+下次 polling 會重新建立 state（已有的 Issue 會被偵測為「新」，但 comment 高水位會設在最新）。
 
 ---
 
-## 監控
-
-### 額度消耗
+## 額度消耗
 
 每個任務大約消耗：
-- 簡單 bug fix：50K-100K tokens ≈ $0.15-$0.50
-- 中型功能：100K-200K tokens ≈ $0.50-$2
-- 複雜修改：200K+ tokens ≈ $2-$5
 
-建議設定每日上限，避免意外消耗：
+| 任務類型 | Token 估計 | 費用估計（API） |
+|---------|-----------|----------------|
+| 簡單 bug fix | 50K-100K | ~$0.15-$0.50 |
+| 中型功能 | 100K-200K | ~$0.50-$2 |
+| 複雜修改 | 200K+ | ~$2-$5 |
 
-```yaml
-# legate-config.yaml
-limits:
-  max_tasks_per_day: 20
-  max_tokens_per_task: 500000  # 50 萬 tokens
-```
-
-### 磁碟空間
-
-每個任務的 workspace 會在完成後自動清理。但如果任務異常中斷，可能留下 orphan volume：
-
-```bash
-# 清理沒有被使用的 volume
-docker volume prune -f
-
-# 清理沒有被使用的 image
-docker image prune -f
-```
-
-建議設定 cron 每天自動清理：
-
-```bash
-# /etc/cron.daily/legate-cleanup
-#!/bin/bash
-docker volume prune -f
-docker container prune -f
-```
+> 使用 Max 訂閱時不另外計費（用你的月額度）。使用 API Key 時按 token 計費。
 
 ---
 
 ## 安全注意事項
 
-### 你在幫陌生人跑 code
+1. **只追蹤你信任的人的 repo** — AI 會讀取 repo 內容，惡意 repo 可能含 prompt injection
+2. **Channel sender gating** — 只有 allowlist 內的人能透過 Channel 發任務
+3. **PAT scope 最小化** — 只給必要的權限
+4. **定期輪換 Token** — PAT 和 bot token 都要定期換
 
-即使 Docker 有隔離，也要注意：
+### 未來：Docker 隔離（Phase 2）
 
-1. **只追蹤你信任的人的 repo** — 不要隨便幫陌生人跑
-2. **定期檢查 Docker 容器行為** — CPU 異常飆高可能是挖礦
-3. **保持 Docker 更新** — 容器逃逸漏洞每年都有
-4. **不要在 operator 機器上放敏感資料** — 萬一出事，損失最小化
-5. **PAT scope 最小化** — 只給必要的權限
-
-### Docker 安全設定
-
-Legate 預設的容器安全設定：
+Phase 2 會加入 Docker 隔離，讓每個任務在獨立容器中執行：
 
 ```bash
---cap-drop=ALL                    # 移除所有 Linux capabilities
---security-opt=no-new-privileges  # 禁止提權
---memory=4g                       # 記憶體上限
---cpus=2                          # CPU 上限
---pids-limit=512                  # 程序數上限
---read-only                       # 唯讀 root filesystem
---tmpfs /tmp:size=100m            # 可寫的 temp 目錄
---user 1000:1000                  # 非 root 執行
+--cap-drop=ALL
+--security-opt=no-new-privileges
+--memory=4g --cpus=2
+--pids-limit=512
+--user 1000:1000
 ```
 
-**不要關閉這些設定**，除非你完全理解後果。
-
-### Network 隔離
-
-```bash
-# 建立 Legate 專用 network
-docker network create legate-net \
-  --driver bridge \
-  --opt com.docker.network.bridge.enable_ip_masquerade=true
-
-# 可選：設定 iptables 限制只允許 GitHub + npm
-# 這部分依你的 VPS 環境而定
-```
+目前 Phase 1 的任務直接在 Claude Code session 中執行（跟你平常用 Claude Code 一樣的隔離等級）。
 
 ---
 
 ## 故障排除
 
-### 任務一直失敗
+### Issue 沒被偵測到
 
-1. 檢查 container log：`docker logs legate-task-xxx`
-2. 常見原因：
-   - CLAUDE.md 不夠清楚 → 請委託者改善
-   - Issue 描述太模糊 → 請委託者補充
-   - Repo 太大或太複雜 → 超出 AI 能力範圍
-   - API Key 過期或額度用完 → 檢查 console.anthropic.com
+1. 確認 Issue 有正確的 label（預設 `legate`）
+2. 確認 repo 在 `access.json` 的 `trackedRepos` 裡
+3. 查看 `debug.log` 有沒有 polling 記錄
+4. 確認 PAT 有讀取 Issues 的權限
 
-### Container 跑太久
+### Comment 沒被偵測到
 
-- 預設 10 分鐘 timeout
-- 如果經常超時，可能是任務太大 → 請委託者拆小
-- 或增加 `max_task_duration`（但會消耗更多額度）
+1. 查看 `state.json` 的 `lastCommentId` 是否正確
+2. Bot 自己的 comment 會被過濾（存在 `botCommentIds`）
+3. 確認 polling interval 內有新的 poll tick
 
-### Fork 衝突
+### Plugin 啟動失敗
 
-- 如果 fork 的 branch 跟原 repo 衝突，Legate 會自動 rebase
-- 如果 rebase 失敗，任務會標記失敗，需要手動處理
-
-### Heartbeat 沒偵測到 Issue
-
-- 確認 Issue 有正確的 label（預設 `legate`）
-- 確認 repo 在 `tracked_repos` 列表中
-- 確認 PAT 有 `repo` scope
-- 檢查 orchestrator log
+1. 確認 `bun --version` 能正常執行
+2. 確認 `.mcp.json` 格式正確
+3. 開發模式下確認從 Legate 專案根目錄啟動
 
 ---
 
-## 成為好的 Operator
+## 成為好的代勞者
 
-- **設定合理的並發上限** — 不要把機器跑爆
-- **定期檢查任務品質** — 如果某個 repo 的任務一直失敗，跟委託者溝通改善 CLAUDE.md
-- **保持環境更新** — Docker、Node.js、Claude Code CLI 都要定期更新
-- **監控額度消耗** — 設定每日上限，避免意外
-- **備份 config** — `legate-config.yaml` 和 `.env` 是你的核心設定
+- **回應有品質的任務** — CLAUDE.md 寫得好的 repo，AI 結果會更好
+- **幫委託者改善 CLAUDE.md** — 如果 AI 結果不理想，建議對方補充專案資訊
+- **監控額度** — 不要讓月額度被單一 repo 吃光
+- **保持工具更新** — Claude Code、Bun、plugin 都要定期更新
+
+---
+
+*最後更新：2026-03-21*
