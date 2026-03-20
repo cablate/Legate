@@ -6,7 +6,13 @@ import {
   CallToolRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { Octokit } from "octokit";
-import { readFileSync, mkdirSync, existsSync } from "fs";
+import {
+  readFileSync,
+  writeFileSync,
+  appendFileSync,
+  mkdirSync,
+  existsSync,
+} from "fs";
 import { join } from "path";
 import { homedir } from "os";
 
@@ -17,6 +23,19 @@ import { homedir } from "os";
 const CONFIG_DIR = join(homedir(), ".claude", "channels", "github-issues");
 const ENV_PATH = join(CONFIG_DIR, ".env");
 const ACCESS_PATH = join(CONFIG_DIR, "access.json");
+const STATE_PATH = join(CONFIG_DIR, "state.json");
+const LOG_PATH = join(CONFIG_DIR, "debug.log");
+
+// ---------------------------------------------------------------------------
+// Logger
+// ---------------------------------------------------------------------------
+
+function log(msg: string) {
+  const line = `[${new Date().toISOString()}] ${msg}\n`;
+  try {
+    appendFileSync(LOG_PATH, line);
+  } catch {}
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -33,16 +52,20 @@ interface AccessConfig {
   pollIntervalMs: number;
 }
 
-interface SeenState {
-  issues: Record<string, number>;
-  /** Comment IDs posted by this bot (to filter our own replies) */
-  myCommentIds: Set<number>;
+/** Per-issue persistent state */
+interface IssueState {
+  /** Highest comment ID we've already processed */
+  lastCommentId: number;
+  /** Comment IDs posted by this bot (persisted to survive restarts) */
+  botCommentIds: number[];
 }
 
-const seen: SeenState = { issues: {}, myCommentIds: new Set() };
+interface PersistedState {
+  issues: Record<string, IssueState>;
+}
 
 // ---------------------------------------------------------------------------
-// Helpers
+// State persistence
 // ---------------------------------------------------------------------------
 
 function ensureConfigDir() {
@@ -50,6 +73,24 @@ function ensureConfigDir() {
     mkdirSync(CONFIG_DIR, { recursive: true });
   }
 }
+
+function loadState(): PersistedState {
+  try {
+    const raw = readFileSync(STATE_PATH, "utf-8");
+    return JSON.parse(raw);
+  } catch {
+    return { issues: {} };
+  }
+}
+
+function saveState(state: PersistedState) {
+  ensureConfigDir();
+  writeFileSync(STATE_PATH, JSON.stringify(state, null, 2));
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 function loadToken(): string | null {
   if (process.env.GITHUB_TOKEN) return process.env.GITHUB_TOKEN;
@@ -67,7 +108,7 @@ function loadAccess(): AccessConfig {
     const raw = readFileSync(ACCESS_PATH, "utf-8");
     return JSON.parse(raw);
   } catch {
-    return { trackedRepos: [], pollIntervalMs: 5 * 60 * 1000 };
+    return { trackedRepos: [], pollIntervalMs: 60 * 1000 };
   }
 }
 
@@ -75,36 +116,42 @@ function issueKey(owner: string, repo: string, number: number) {
   return `${owner}/${repo}#${number}`;
 }
 
+function createOctokit(): Octokit | null {
+  const token = loadToken();
+  if (!token) return null;
+  return new Octokit({ auth: token });
+}
+
 // ---------------------------------------------------------------------------
 // MCP Server
 // ---------------------------------------------------------------------------
 
 const mcp = new Server(
-  { name: "github-issues", version: "0.0.1" },
+  { name: "github-issues", version: "0.1.0" },
   {
     capabilities: {
       experimental: { "claude/channel": {} },
       tools: {},
     },
     instructions: [
-      "You receive GitHub Issue events via <channel source=\"github-issues\">.",
+      'You receive GitHub Issue events via <channel source="github-issues">.',
       "",
       "Each event has these attributes:",
-      "- repo: \"owner/repo\"",
+      '- repo: "owner/repo"',
       "- issue: issue number",
       "- author: who opened/commented",
-      "- type: \"new_issue\" or \"issue_comment\"",
+      '- type: "new_issue" or "issue_comment"',
       "- url: link to the issue/comment",
       "",
       "When you receive a new_issue event:",
       "1. Read the issue body to understand the task",
       "2. Work on it using your available tools",
-      "3. Use the \"reply\" tool to post your response/result as a comment on the issue",
+      '3. Use the "reply" tool to post your response/result as a comment on the issue',
       "",
       "When you receive an issue_comment event:",
       "1. Read the comment to understand what is being asked",
       "2. Respond accordingly",
-      "3. Use the \"reply\" tool to post your response",
+      '3. Use the "reply" tool to post your response',
       "",
       "Always pass the repo and issue number from the channel event to the reply tool.",
     ].join("\n"),
@@ -165,8 +212,8 @@ mcp.setRequestHandler(ListToolsRequestSchema, async () => ({
 }));
 
 mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
-  const token = loadToken();
-  if (!token) {
+  const octokit = createOctokit();
+  if (!octokit) {
     return {
       content: [
         {
@@ -176,7 +223,6 @@ mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
       ],
     };
   }
-  const octokit = new Octokit({ auth: token });
 
   if (req.params.name === "reply") {
     const { repo, issue_number, body } = req.params.arguments as {
@@ -191,7 +237,21 @@ mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
       issue_number,
       body,
     });
-    seen.myCommentIds.add(created.id);
+
+    // Persist bot comment ID so we can filter it on future polls (even after restart)
+    const state = loadState();
+    const key = issueKey(owner, repoName, issue_number);
+    if (!state.issues[key]) {
+      state.issues[key] = { lastCommentId: 0, botCommentIds: [] };
+    }
+    state.issues[key].botCommentIds.push(created.id);
+    // Also advance the high-water mark past our own comment
+    if (created.id > state.issues[key].lastCommentId) {
+      state.issues[key].lastCommentId = created.id;
+    }
+    saveState(state);
+
+    log(`reply: posted comment ${created.id} on ${repo}#${issue_number}`);
     return { content: [{ type: "text", text: "Comment posted." }] };
   }
 
@@ -219,6 +279,9 @@ mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
 // ---------------------------------------------------------------------------
 
 async function pollOnce(octokit: Octokit, access: AccessConfig) {
+  const state = loadState();
+  let stateChanged = false;
+
   for (const tracked of access.trackedRepos) {
     const { owner, repo, label } = tracked;
 
@@ -234,15 +297,31 @@ async function pollOnce(octokit: Octokit, access: AccessConfig) {
       });
 
       for (const issue of issues) {
-        // Skip pull requests (GitHub API returns PRs in issues endpoint)
         if (issue.pull_request) continue;
 
         const key = issueKey(owner, repo, issue.number);
-        const prevComments = seen.issues[key];
+        const issueState = state.issues[key];
 
-        if (prevComments === undefined) {
-          // New issue
-          seen.issues[key] = issue.comments ?? 0;
+        if (!issueState) {
+          // ── New issue we've never seen ──
+          log(`${key}: NEW ISSUE`);
+
+          // Fetch latest comment to set high-water mark (skip old comments)
+          let lastCommentId = 0;
+          if (issue.comments && issue.comments > 0) {
+            const { data: latest } = await octokit.rest.issues.listComments({
+              owner,
+              repo,
+              issue_number: issue.number,
+              per_page: 100,
+            });
+            if (latest.length > 0) {
+              lastCommentId = latest[latest.length - 1].id;
+            }
+          }
+
+          state.issues[key] = { lastCommentId, botCommentIds: [] };
+          stateChanged = true;
 
           await mcp.notification({
             method: "notifications/claude/channel",
@@ -257,25 +336,29 @@ async function pollOnce(octokit: Octokit, access: AccessConfig) {
               },
             },
           });
-        } else if (
-          issue.comments !== undefined &&
-          issue.comments > prevComments
-        ) {
-          // New comments on known issue
+        } else {
+          // ── Known issue — check for new comments ──
+          // Only fetch comments newer than our high-water mark
           const { data: comments } = await octokit.rest.issues.listComments({
             owner,
             repo,
             issue_number: issue.number,
-            since: new Date(
-              Date.now() - access.pollIntervalMs * 1.5
-            ).toISOString(),
-            per_page: 10,
+            per_page: 100,
           });
 
-          for (const comment of comments) {
-            // Skip comments posted by this bot instance
-            if (seen.myCommentIds.has(comment.id)) continue;
+          const botIds = new Set(issueState.botCommentIds);
 
+          // Filter: id > lastCommentId AND not our own bot comment
+          const newComments = comments.filter(
+            (c) => c.id > issueState.lastCommentId && !botIds.has(c.id)
+          );
+
+          if (newComments.length > 0) {
+            log(`${key}: ${newComments.length} new comment(s)`);
+          }
+
+          for (const comment of newComments) {
+            log(`Pushing comment ${comment.id} by ${comment.user?.login}`);
             await mcp.notification({
               method: "notifications/claude/channel",
               params: {
@@ -292,48 +375,59 @@ async function pollOnce(octokit: Octokit, access: AccessConfig) {
             });
           }
 
-          seen.issues[key] = issue.comments;
+          // Update high-water mark to highest comment ID seen (including bot's)
+          if (comments.length > 0) {
+            const maxId = Math.max(...comments.map((c) => c.id));
+            if (maxId > issueState.lastCommentId) {
+              issueState.lastCommentId = maxId;
+              stateChanged = true;
+            }
+          }
         }
       }
     } catch (err) {
-      console.error(
-        `[github-issues] Error polling ${owner}/${repo}:`,
-        err instanceof Error ? err.message : err
+      log(
+        `Error polling ${owner}/${repo}: ${err instanceof Error ? err.message : err}`
       );
     }
+  }
+
+  if (stateChanged) {
+    saveState(state);
   }
 }
 
 async function startPolling() {
-  const token = loadToken();
-  if (!token) {
-    console.error(
-      "[github-issues] No GITHUB_TOKEN found. Configure with /github-issues:configure <token>"
-    );
-    return;
-  }
-
-  const octokit = new Octokit({ auth: token });
   const access = loadAccess();
 
   if (access.trackedRepos.length === 0) {
-    console.error(
-      "[github-issues] No tracked repos. Use /github-issues:access add <owner/repo> to add one."
-    );
+    log("No tracked repos. Use /github-issues:access add <owner/repo> to add one.");
     return;
   }
 
-  console.error(
-    `[github-issues] Polling ${access.trackedRepos.length} repo(s) every ${access.pollIntervalMs / 1000}s`
-  );
+  log(`Polling ${access.trackedRepos.length} repo(s) every ${access.pollIntervalMs / 1000}s`);
 
   // Initial poll
+  const octokit = createOctokit();
+  if (!octokit) {
+    log("No GITHUB_TOKEN found. Configure with /github-issues:configure <token>");
+    return;
+  }
   await pollOnce(octokit, access);
 
-  // Recurring poll
+  // Recurring poll — refresh token + access each cycle
   setInterval(async () => {
-    const freshAccess = loadAccess();
-    await pollOnce(octokit, freshAccess);
+    try {
+      const freshOctokit = createOctokit();
+      if (!freshOctokit) {
+        log("GITHUB_TOKEN not available, skipping poll");
+        return;
+      }
+      const freshAccess = loadAccess();
+      await pollOnce(freshOctokit, freshAccess);
+    } catch (err) {
+      log(`Poll error: ${err instanceof Error ? err.message : err}`);
+    }
   }, access.pollIntervalMs);
 }
 
