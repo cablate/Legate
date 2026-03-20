@@ -35,9 +35,11 @@ interface AccessConfig {
 
 interface SeenState {
   issues: Record<string, number>;
+  /** Comment IDs posted by this bot (to filter our own replies) */
+  myCommentIds: Set<number>;
 }
 
-const seen: SeenState = { issues: {} };
+const seen: SeenState = { issues: {}, myCommentIds: new Set() };
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -183,12 +185,13 @@ mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
       body: string;
     };
     const [owner, repoName] = repo.split("/");
-    await octokit.rest.issues.createComment({
+    const { data: created } = await octokit.rest.issues.createComment({
       owner,
       repo: repoName,
       issue_number,
       body,
     });
+    seen.myCommentIds.add(created.id);
     return { content: [{ type: "text", text: "Comment posted." }] };
   }
 
@@ -269,17 +272,9 @@ async function pollOnce(octokit: Octokit, access: AccessConfig) {
             per_page: 10,
           });
 
-          // Get authenticated user to skip our own comments
-          let myLogin: string | null = null;
-          try {
-            const { data: me } = await octokit.rest.users.getAuthenticated();
-            myLogin = me.login;
-          } catch {
-            // Fine, skip filtering
-          }
-
           for (const comment of comments) {
-            if (myLogin && comment.user?.login === myLogin) continue;
+            // Skip comments posted by this bot instance
+            if (seen.myCommentIds.has(comment.id)) continue;
 
             await mcp.notification({
               method: "notifications/claude/channel",
