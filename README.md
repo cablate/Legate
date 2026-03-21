@@ -57,16 +57,16 @@ Legate 把這件事自動化。
 
 Legate 基於 [Claude Code Channels](https://code.claude.com/docs/en/channels)——讓外部訊息推入 Claude Code session 的 MCP 協議。
 
-**Channel 是可插拔的。** 任何能收訊息的平台都能寫成 Channel：
+**Channel 是可插拔的。** 任何能收訊息的平台都能寫成 Channel。官方已支援 Telegram 和 Discord，GitHub Issues 等其他平台也能自行開發：
 
-| Channel | 狀態 | 說明 |
-|---------|------|------|
-| GitHub Issues | ✅ MVP 驗證完成 | 偵測帶 label 的 Issue，自動處理 |
-| Telegram | 📋 規劃中 | 透過 bot 接收任務 |
-| Discord | 📋 規劃中 | 透過 bot 接收任務 |
-| 自訂 | 📖 有指南 | 見 [Channel Plugin 改造指南](docs/channel-plugin-guide.md) |
+| Channel | 說明 |
+|---------|------|
+| Telegram | 官方支援，透過 bot 接收任務 |
+| Discord | 官方支援，透過 bot 接收任務 |
+| GitHub Issues | 偵測帶 label 的 Issue，自動處理 |
+| 其他平台 | 只需在現有 MCP Server 上加 ~10 行 Channel capability 宣告 |
 
-想為其他平台寫 Channel？只需要在現有 MCP Server 上加 ~10 行 Channel capability 宣告。詳見 [channel-plugin-guide.md](docs/channel-plugin-guide.md)。
+想為其他平台寫 Channel？詳見 [Channel Plugin 改造指南](docs/channel-plugin-guide.md)。
 
 ---
 

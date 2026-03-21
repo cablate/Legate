@@ -57,16 +57,16 @@ Requester: Receives PR, reviews, merges if satisfied
 
 Legate is built on [Claude Code Channels](https://code.claude.com/docs/en/channels) — an MCP protocol that pushes external messages into Claude Code sessions.
 
-**Channels are pluggable.** Any platform that can receive messages can be built into a Channel:
+**Channels are pluggable.** Any platform that can receive messages can be built into a Channel. Telegram and Discord are officially supported, and other platforms like GitHub Issues can be custom-built:
 
-| Channel | Status | Description |
-|---------|--------|-------------|
-| GitHub Issues | ✅ MVP verified | Detects labeled Issues, processes automatically |
-| Telegram | 📋 Planned | Receive tasks via bot |
-| Discord | 📋 Planned | Receive tasks via bot |
-| Custom | 📖 Guide available | See [Channel Plugin Guide](docs/channel-plugin-guide.md) |
+| Channel | Description |
+|---------|-------------|
+| Telegram | Officially supported, receive tasks via bot |
+| Discord | Officially supported, receive tasks via bot |
+| GitHub Issues | Detect labeled Issues, process automatically |
+| Other platforms | Just add ~10 lines of Channel capability declaration to an existing MCP Server |
 
-Want to build a Channel for another platform? Just add ~10 lines of Channel capability declaration to an existing MCP Server. See [channel-plugin-guide.md](docs/channel-plugin-guide.md).
+Want to build a Channel for another platform? See [Channel Plugin Guide](docs/channel-plugin-guide.md).
 
 ---
 
